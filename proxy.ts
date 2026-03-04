@@ -19,6 +19,7 @@ export function proxy(req: NextRequest) {
       '127.0.0.1'
 
     if (!ALLOWED_RANGES.some((r) => r.test(ip))) {
+      console.log(`[proxy] blocked ip=${ip} x-forwarded-for=${req.headers.get('x-forwarded-for')} x-real-ip=${req.headers.get('x-real-ip')}`)
       return new NextResponse('Forbidden', { status: 403 })
     }
   }
