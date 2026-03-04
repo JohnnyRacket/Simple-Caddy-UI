@@ -1,7 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Save, RefreshCw, CheckCircle, WrapText, Loader2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Save, RefreshCw, CheckCircle, WrapText, Loader2, Menu } from "lucide-react";
 
 export type ActionStatus = "idle" | "loading" | "success" | "error";
 
@@ -73,37 +79,49 @@ export function EditorToolbar({
 }: EditorToolbarProps) {
   return (
     <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-card shrink-0">
-      <ActionButton
-        onClick={onSave}
-        status={saveStatus}
-        icon={Save}
-        label="Save"
-      />
-      <ActionButton
-        onClick={onReload}
-        status={reloadStatus}
-        icon={RefreshCw}
-        label="Reload"
-      />
-      <ActionButton
-        onClick={onValidate}
-        status={validateStatus}
-        icon={CheckCircle}
-        label="Validate"
-      />
-      <ActionButton
-        onClick={onFormat}
-        status={formatStatus}
-        icon={WrapText}
-        label="Format"
-      />
-      <Separator orientation="vertical" className="h-5 mx-1" />
       {dirty && (
         <span className="text-xs text-muted-foreground">Unsaved changes</span>
       )}
-      <div className="flex items-center gap-2 ml-auto">
+      <div className="flex items-center gap-2">
         <StatusBadge status={saveStatus} label="Save" />
         <StatusBadge status={reloadStatus} label="Reload" />
+      </div>
+
+      <div className="flex items-center gap-2 ml-auto">
+        <Separator orientation="vertical" className="h-5 mx-1" />
+
+        {/* Mobile: hamburger dropdown */}
+        <div className="sm:hidden">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="secondary" size="sm">
+                <Menu className="size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onSave} disabled={saveStatus === "loading"}>
+                <Save className="size-3.5 mr-2" /> Save
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onReload} disabled={reloadStatus === "loading"}>
+                <RefreshCw className="size-3.5 mr-2" /> Reload
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onValidate} disabled={validateStatus === "loading"}>
+                <CheckCircle className="size-3.5 mr-2" /> Validate
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onFormat} disabled={formatStatus === "loading"}>
+                <WrapText className="size-3.5 mr-2" /> Format
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {/* Desktop: full buttons */}
+        <div className="hidden sm:flex items-center gap-2">
+          <ActionButton onClick={onSave} status={saveStatus} icon={Save} label="Save" />
+          <ActionButton onClick={onReload} status={reloadStatus} icon={RefreshCw} label="Reload" />
+          <ActionButton onClick={onValidate} status={validateStatus} icon={CheckCircle} label="Validate" />
+          <ActionButton onClick={onFormat} status={formatStatus} icon={WrapText} label="Format" />
+        </div>
       </div>
     </div>
   );
