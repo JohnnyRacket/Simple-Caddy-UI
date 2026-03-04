@@ -4,6 +4,8 @@ A Next.js management UI for [Caddy](https://caddyserver.com/) — edit your Cadd
 
 ---
 
+<img width="870" height="811" alt="Image" src="https://github.com/user-attachments/assets/ad734469-4937-4975-85ce-58b370f0298f" />
+
 ## Try It Out (Docker)
 
 The quickest way to kick the tires before committing to a full install. Requires [Docker](https://docs.docker.com/get-docker/) with the Compose plugin.
