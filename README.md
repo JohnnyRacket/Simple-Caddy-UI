@@ -34,30 +34,38 @@ sudo apt-get install -y nodejs
 node --version  # should be v24.x
 ```
 
-### 2. Clone & Build
+### 2. Create a Dedicated Service User
+
+Running the app as a dedicated system user limits the blast radius if anything goes wrong.
 
 ```bash
-cd ~
-git clone https://github.com/JohnnyRacket/Simple-Caddy-UI.git caddy-ui
-cd caddy-ui
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin caddy-ui
+```
 
-npm install
+### 3. Clone & Build
+
+```bash
+sudo git clone https://github.com/JohnnyRacket/Simple-Caddy-UI.git /opt/caddy-ui
+sudo chown -R caddy-ui:caddy-ui /opt/caddy-ui
+cd /opt/caddy-ui
+
+sudo -u caddy-ui npm install
 
 # Create env file — adjust path if your Caddyfile is elsewhere
 # Generate a strong token with: openssl rand -hex 32
-cat > .env.local << 'EOF'
+sudo -u caddy-ui tee /opt/caddy-ui/.env.local << 'EOF'
 CADDYFILE_PATH=/etc/caddy/Caddyfile
 SECRET_TOKEN=your-secret-token-here
 EOF
 
-npm run build
+sudo -u caddy-ui npm run build
 ```
 
 > **`LOCAL_ONLY`** — by default the app rejects requests from non-LAN IPs. If you're running behind a reverse proxy or need to adjust this, add `LOCAL_ONLY=false` to your `.env.local`.
 
-### 3. Configure Sudoers
+### 4. Configure Sudoers
 
-The app needs passwordless `sudo` for a few specific commands. Replace `YOUR_USER` with the user that will run the app (e.g. `pi`, `caddy`).
+The app needs passwordless `sudo` for a few specific commands.
 
 ```bash
 sudo visudo -f /etc/sudoers.d/caddy-ui
@@ -66,18 +74,18 @@ sudo visudo -f /etc/sudoers.d/caddy-ui
 Paste the following, then save and exit:
 
 ```
-YOUR_USER ALL=(ALL) NOPASSWD: /bin/cp /tmp/caddyfile-* /etc/caddy/Caddyfile
-YOUR_USER ALL=(ALL) NOPASSWD: /bin/systemctl reload caddy
-YOUR_USER ALL=(ALL) NOPASSWD: /usr/bin/caddy validate --config /etc/caddy/Caddyfile
+caddy-ui ALL=(ALL) NOPASSWD: /bin/cp /tmp/caddyfile-* /etc/caddy/Caddyfile
+caddy-ui ALL=(ALL) NOPASSWD: /bin/systemctl reload caddy
+caddy-ui ALL=(ALL) NOPASSWD: /usr/bin/caddy validate --config /etc/caddy/Caddyfile
 ```
 
 Verify it works:
 
 ```bash
-sudo /bin/systemctl reload caddy
+sudo -u caddy-ui sudo /bin/systemctl reload caddy
 ```
 
-### 4. Create a Systemd Service
+### 5. Create a Systemd Service
 
 This keeps the app running and restarts it on failure.
 
@@ -87,8 +95,6 @@ sudo nano /etc/systemd/system/caddy-ui.service
 
 Next.js automatically loads `.env.local` at startup, so no extra environment configuration is needed in the service file.
 
-Paste the following, replacing `YOUR_USER` and the path if you cloned elsewhere:
-
 ```ini
 [Unit]
 Description=Caddy UI
@@ -96,8 +102,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=YOUR_USER
-WorkingDirectory=/home/caddy/caddy-ui
+User=caddy-ui
+WorkingDirectory=/opt/caddy-ui
 ExecStart=/usr/bin/npm start
 Restart=on-failure
 Environment=NODE_ENV=production PORT=3000
