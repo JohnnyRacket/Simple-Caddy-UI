@@ -104,7 +104,7 @@ This keeps the app running and restarts it on failure.
 sudo nano /etc/systemd/system/caddy-ui.service
 ```
 
-Next.js automatically loads `.env.local` at startup, so no extra environment configuration is needed in the service file.
+Next.js automatically loads `.env.local` at startup, so no extra environment configuration is needed in the service file. To change the port, set `PORT=<number>` in `.env.local` — Next.js reads it natively.
 
 ```ini
 [Unit]
@@ -155,6 +155,6 @@ caddy-ui is designed for **LAN/trusted-network use only**.
 - **Do not expose port 3000 to the public internet.** The app has no brute-force protection beyond the built-in rate limiter, and a compromised token grants full Caddyfile write access.
 - **Auth is a single shared secret.** `SECRET_TOKEN` is a bearer token, not a user account system. Treat it like a password and rotate it if exposed.
 - **The app runs with limited `sudo` access.** Only the specific commands in the sudoers file are allowed — it cannot run arbitrary commands as root.
-- **LAN enforcement is enabled by default.** `LOCAL_ONLY=true` (the default) blocks all non-LAN IPs at the middleware level. Disable only if you control access at the network/reverse-proxy layer.
+- **LAN enforcement is enabled by default, but is not a security boundary.** `LOCAL_ONLY=true` blocks requests whose IP doesn't match a known private range, but this check runs in application middleware — it can be fooled by misconfigured proxies, spoofed headers, or future code changes. It is a convenience guard for accidental exposure, not a hardened firewall rule. **Do not rely on it as your only protection.** If you need to restrict access, do it at the network level (firewall, VPN, or reverse proxy with proper IP allowlisting).
 
 The install paths and usernames used in this README (`/opt/caddy-ui`, `caddy-ui` user) are conventions, not requirements. Adapt them to your environment as needed.
