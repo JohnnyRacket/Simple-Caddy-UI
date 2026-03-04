@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Create appuser + sudoers matching the Pi rules
 RUN useradd -m -s /bin/bash appuser \
-    && echo 'appuser ALL=(ALL) NOPASSWD: /bin/cp * /etc/caddy/Caddyfile, /usr/bin/caddy validate --config /etc/caddy/Caddyfile, /usr/bin/systemctl reload caddy' \
+    && echo 'appuser ALL=(ALL) NOPASSWD: /bin/cp /tmp/caddyfile-* /etc/caddy/Caddyfile, /usr/bin/caddy validate --config /etc/caddy/Caddyfile, /usr/bin/systemctl reload caddy' \
        > /etc/sudoers.d/caddy-ui \
     && chmod 0440 /etc/sudoers.d/caddy-ui
 

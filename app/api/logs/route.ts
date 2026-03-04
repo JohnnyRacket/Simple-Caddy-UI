@@ -2,7 +2,15 @@ import { spawnStream } from "@/lib/exec";
 
 export const dynamic = "force-dynamic";
 
+let activeConnections = 0;
+const MAX_CONNECTIONS = 5;
+
 export async function GET() {
+  if (activeConnections >= MAX_CONNECTIONS) {
+    return new Response("Too many log stream connections", { status: 429 });
+  }
+
+  activeConnections++;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let proc: ReturnType<typeof spawnStream> | null = null;
 
@@ -36,11 +44,16 @@ export async function GET() {
         }
       });
 
+      let cleaned = false;
+      const cleanup = () => { if (!cleaned) { cleaned = true; activeConnections--; } };
+
       proc.on("close", () => {
+        cleanup();
         try { controller.close(); } catch { /* already closed */ }
       });
 
       proc.on("error", (err: Error) => {
+        cleanup();
         const msg = err.message.includes("ENOENT")
           ? "journalctl not found — is this a systemd system?"
           : err.message;
@@ -52,6 +65,7 @@ export async function GET() {
     },
     cancel() {
       proc?.kill("SIGTERM");
+      // activeConnections decremented in proc "close" handler after kill
     },
   });
 

@@ -58,7 +58,7 @@ sudo visudo -f /etc/sudoers.d/caddy-ui
 Paste the following, then save and exit:
 
 ```
-YOUR_USER ALL=(ALL) NOPASSWD: /bin/cp /tmp/* /etc/caddy/Caddyfile
+YOUR_USER ALL=(ALL) NOPASSWD: /bin/cp /tmp/caddyfile-* /etc/caddy/Caddyfile
 YOUR_USER ALL=(ALL) NOPASSWD: /bin/systemctl reload caddy
 YOUR_USER ALL=(ALL) NOPASSWD: /usr/bin/caddy validate --config /etc/caddy/Caddyfile
 ```

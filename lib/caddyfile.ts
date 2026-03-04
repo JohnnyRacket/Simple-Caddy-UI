@@ -3,7 +3,17 @@ import os from "os";
 import path from "path";
 import { runCommand } from "./exec";
 
-const CADDYFILE = process.env.CADDYFILE_PATH ?? "/etc/caddy/Caddyfile";
+const rawPath = process.env.CADDYFILE_PATH ?? "/etc/caddy/Caddyfile";
+
+// Validate CADDYFILE_PATH at startup to prevent path traversal
+if (!path.isAbsolute(rawPath)) {
+  throw new Error(`CADDYFILE_PATH must be an absolute path: ${rawPath}`);
+}
+if (rawPath.includes("..")) {
+  throw new Error(`CADDYFILE_PATH must not contain '..': ${rawPath}`);
+}
+
+const CADDYFILE = rawPath;
 
 export async function readCaddyfile(): Promise<string> {
   try {
@@ -23,12 +33,16 @@ export async function readCaddyfile(): Promise<string> {
 }
 
 export async function saveCaddyfile(content: string): Promise<void> {
-  const tmpPath = path.join(os.tmpdir(), `caddyfile-${Date.now()}`);
-  await fs.writeFile(tmpPath, content, "utf-8");
+  // Use a private temp directory to prevent symlink/TOCTOU attacks
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "caddyfile-"));
+  const tmpPath = path.join(tmpDir, "config");
+  await fs.writeFile(tmpPath, content, { encoding: "utf-8", mode: 0o600 });
   try {
+    // Validate before overwriting the live config
+    await runCommand("/usr/bin/caddy", ["validate", "--config", tmpPath]);
     await runCommand("sudo", ["/bin/cp", tmpPath, CADDYFILE]);
   } finally {
-    await fs.unlink(tmpPath).catch(() => undefined);
+    await fs.rm(tmpDir, { recursive: true }).catch(() => undefined);
   }
 }
 
