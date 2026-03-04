@@ -65,6 +65,14 @@ sudo -u caddy-ui npm run build
 
 > **`LOCAL_ONLY`** — by default the app rejects requests from non-LAN IPs. If you're running behind a reverse proxy or need to adjust this, add `LOCAL_ONLY=false` to your `.env.local`.
 
+> **Binary path overrides** — the app defaults to standard Debian/Ubuntu paths (`/bin/cp`, `/usr/bin/caddy`, `/bin/systemctl`, `/usr/bin/journalctl`). On other distros, override them in `.env.local`:
+> ```
+> CP_BIN=/usr/bin/cp
+> CADDY_BIN=/usr/local/bin/caddy
+> SYSTEMCTL_BIN=/usr/bin/systemctl
+> JOURNALCTL_BIN=/usr/bin/journalctl
+> ```
+
 ### 4. Configure Sudoers
 
 The app needs passwordless `sudo` for a few specific commands.
@@ -140,4 +148,13 @@ sudo systemctl restart caddy-ui
 
 ---
 
-# I think this goes without saying but do not expose this to the public internet directly unless you know what you are doing. I strongly suggest only allowing local access.
+## Security & Threat Model
+
+caddy-ui is designed for **LAN/trusted-network use only**.
+
+- **Do not expose port 3000 to the public internet.** The app has no brute-force protection beyond the built-in rate limiter, and a compromised token grants full Caddyfile write access.
+- **Auth is a single shared secret.** `SECRET_TOKEN` is a bearer token, not a user account system. Treat it like a password and rotate it if exposed.
+- **The app runs with limited `sudo` access.** Only the specific commands in the sudoers file are allowed — it cannot run arbitrary commands as root.
+- **LAN enforcement is enabled by default.** `LOCAL_ONLY=true` (the default) blocks all non-LAN IPs at the middleware level. Disable only if you control access at the network/reverse-proxy layer.
+
+The install paths and usernames used in this README (`/opt/caddy-ui`, `caddy-ui` user) are conventions, not requirements. Adapt them to your environment as needed.

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
+import { timingSafeEqual } from "crypto"
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
 
 function hostUrl(req: NextRequest, pathname: string, search = "") {
   const host = req.headers.get("host") ?? "localhost:3000"
@@ -15,10 +17,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.redirect(hostUrl(req, "/editor"))
   }
 
+  // Rate limit: 10 attempts per 15 minutes per IP
+  if (!checkRateLimit(`auth:${getClientIp(req)}`, 10, 15 * 60_000)) {
+    return NextResponse.redirect(hostUrl(req, "/login", "?error=1"))
+  }
+
   const form = await req.formData()
   const token = form.get("token")
 
-  if (typeof token !== "string" || token !== secret) {
+  if (typeof token !== "string") {
+    return NextResponse.redirect(hostUrl(req, "/login", "?error=1"))
+  }
+
+  // Use timing-safe comparison to prevent timing attacks
+  const tokenBuf = Buffer.from(token)
+  const secretBuf = Buffer.from(secret)
+  const valid =
+    tokenBuf.length === secretBuf.length &&
+    timingSafeEqual(tokenBuf, secretBuf)
+
+  if (!valid) {
     return NextResponse.redirect(hostUrl(req, "/login", "?error=1"))
   }
 

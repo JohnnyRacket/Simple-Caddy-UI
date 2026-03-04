@@ -13,6 +13,8 @@ const nextConfig: NextConfig = {
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
           {
             key: "Content-Security-Policy",
+            // 'unsafe-inline' is required for Next.js RSC/hydration and Tailwind inline styles.
+            // Nonce-based CSP would require custom server instrumentation; not implemented here.
             value: [
               "default-src 'self'",
               "script-src 'self' 'unsafe-inline'",

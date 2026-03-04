@@ -32,20 +32,24 @@ export async function readCaddyfile(): Promise<string> {
   }
 }
 
+const CP_BIN = process.env.CP_BIN ?? "/bin/cp";
+const CADDY_BIN = process.env.CADDY_BIN ?? "/usr/bin/caddy";
+const SYSTEMCTL_BIN = process.env.SYSTEMCTL_BIN ?? "/bin/systemctl";
+
 export async function saveCaddyfile(content: string): Promise<void> {
   // Use a private temp directory to prevent symlink/TOCTOU attacks
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "caddyfile-"));
   const tmpPath = path.join(tmpDir, "Caddyfile");
   await fs.writeFile(tmpPath, content, { encoding: "utf-8", mode: 0o600 });
   try {
-    await runCommand("sudo", ["/bin/cp", tmpPath, CADDYFILE]);
+    await runCommand("sudo", [CP_BIN, tmpPath, CADDYFILE]);
   } finally {
     await fs.rm(tmpDir, { recursive: true }).catch((e) => console.warn("[caddyfile] tmp cleanup failed:", e));
   }
 }
 
 export async function reloadCaddy(): Promise<void> {
-  await runCommand("sudo", ["/bin/systemctl", "reload", "caddy"]);
+  await runCommand("sudo", [SYSTEMCTL_BIN, "reload", "caddy"]);
 }
 
 export async function validateCaddyfile(): Promise<{
@@ -54,7 +58,7 @@ export async function validateCaddyfile(): Promise<{
 }> {
   try {
     const { stdout, stderr } = await runCommand("sudo", [
-      "/usr/bin/caddy",
+      CADDY_BIN,
       "validate",
       "--config",
       CADDYFILE,
@@ -68,7 +72,7 @@ export async function validateCaddyfile(): Promise<{
 
 export async function formatCaddyfile(content: string): Promise<string> {
   const { stdout } = await runCommand(
-    "/usr/bin/caddy",
+    CADDY_BIN,
     ["fmt", "-"],
     { input: content },
   );
