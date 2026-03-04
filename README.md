@@ -124,4 +124,17 @@ sudo systemctl status caddy-ui
 
 Once running, the UI is available at `http://<machine-ip>:3000` from any device on your local network.
 
+---
+
+## Updating
+
+```bash
+sudo -u caddy-ui git -C /opt/caddy-ui pull
+sudo -u caddy-ui npm --prefix /opt/caddy-ui install
+sudo -u caddy-ui npm --prefix /opt/caddy-ui run build
+sudo systemctl restart caddy-ui
+```
+
+---
+
 # I think this goes without saying but do not expose this to the public internet directly.
