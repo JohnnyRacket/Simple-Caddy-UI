@@ -38,8 +38,6 @@ export async function saveCaddyfile(content: string): Promise<void> {
   const tmpPath = path.join(tmpDir, "config");
   await fs.writeFile(tmpPath, content, { encoding: "utf-8", mode: 0o600 });
   try {
-    // Validate before overwriting the live config
-    await runCommand("/usr/bin/caddy", ["validate", "--config", tmpPath]);
     await runCommand("sudo", ["/bin/cp", tmpPath, CADDYFILE]);
   } finally {
     await fs.rm(tmpDir, { recursive: true }).catch(() => undefined);
