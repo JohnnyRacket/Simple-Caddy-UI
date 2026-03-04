@@ -88,7 +88,7 @@ After=network.target
 Type=simple
 User=YOUR_USER
 WorkingDirectory=/home/caddy/caddy-ui
-ExecStart=/usr/bin/node server.js
+ExecStart=/usr/bin/npm start
 Restart=on-failure
 Environment=NODE_ENV=production PORT=3000
 
@@ -106,30 +106,7 @@ sudo systemctl enable --now caddy-ui
 sudo systemctl status caddy-ui
 ```
 
-### 5. Expose via Caddy (Local Network Only)
-
-First, find your machine's LAN IP:
-
-```bash
-ip addr show | grep "inet " | grep -v 127.0.0.1
-```
-
-Add a site block to your Caddyfile, replacing `192.168.x.x` with your actual LAN IP:
-
-```caddy
-:8080 {
-    bind 192.168.x.x
-    reverse_proxy localhost:3000
-}
-```
-
-Then reload Caddy:
-
-```bash
-sudo systemctl reload caddy
-```
-
-The UI will be available at `http://192.168.x.x:8080` from any device on your local network.
+Once running, the UI is available at `http://<machine-ip>:3000` from any device on your local network.
 
 ---
 
