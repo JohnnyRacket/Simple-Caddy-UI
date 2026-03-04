@@ -108,12 +108,4 @@ sudo systemctl status caddy-ui
 
 Once running, the UI is available at `http://<machine-ip>:3000` from any device on your local network.
 
----
-
-## Development
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+# I think this goes without saying but do not expose this to the public internet directly.
