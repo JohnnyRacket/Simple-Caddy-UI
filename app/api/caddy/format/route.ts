@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { formatCaddyfile } from "@/lib/caddyfile";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 const MAX_CONTENT_BYTES = 1 * 1024 * 1024; // 1 MB
 
 export async function POST(req: NextRequest) {
+  if (!checkRateLimit(`format:${getClientIp(req)}`, 10, 60_000)) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
   try {
     const { content } = await req.json();
     if (typeof content !== "string") {
@@ -15,6 +19,7 @@ export async function POST(req: NextRequest) {
     const formatted = await formatCaddyfile(content);
     return NextResponse.json({ content: formatted });
   } catch (err: unknown) {
+    console.error("[api/caddy/format] error:", err);
     return NextResponse.json(
       { error: (err as Error).message },
       { status: 500 },

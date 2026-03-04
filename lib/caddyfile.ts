@@ -40,7 +40,7 @@ export async function saveCaddyfile(content: string): Promise<void> {
   try {
     await runCommand("sudo", ["/bin/cp", tmpPath, CADDYFILE]);
   } finally {
-    await fs.rm(tmpDir, { recursive: true }).catch(() => undefined);
+    await fs.rm(tmpDir, { recursive: true }).catch((e) => console.warn("[caddyfile] tmp cleanup failed:", e));
   }
 }
 

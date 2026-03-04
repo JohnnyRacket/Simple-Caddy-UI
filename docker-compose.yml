@@ -4,10 +4,11 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     ports:
-      - "3000:3000"   # Caddy UI (Next.js dev server)
-      - "8080:80"     # Caddy web server (test traffic)
+      - "3000:3000" # Caddy UI (Next.js dev server)
+      - "8080:80" # Caddy web server (test traffic)
     volumes:
       - .:/app
     environment:
       - CADDYFILE_PATH=/etc/caddy/Caddyfile
       - NODE_ENV=development
+      - SECRET_TOKEN=password

@@ -16,6 +16,8 @@ docker compose up
 
 Open [http://localhost:3000](http://localhost:3000) for the UI and [http://localhost:8080](http://localhost:8080) for the Caddy web server. Runs in dev mode against a sandboxed Caddy instance — no changes to your host system.
 
+The Docker environment uses `SECRET_TOKEN=password` by default. Visit [http://localhost:3000/login](http://localhost:3000/login) and enter `password` to authenticate. To use a different token, set `SECRET_TOKEN` in a `.env` file at the project root before running `docker compose up`.
+
 ---
 
 ## Self-Hosted Setup
@@ -42,10 +44,16 @@ cd caddy-ui
 npm install
 
 # Create env file — adjust path if your Caddyfile is elsewhere
-echo "CADDYFILE_PATH=/etc/caddy/Caddyfile" > .env.local
+# Generate a strong token with: openssl rand -hex 32
+cat > .env.local << 'EOF'
+CADDYFILE_PATH=/etc/caddy/Caddyfile
+SECRET_TOKEN=your-secret-token-here
+EOF
 
 npm run build
 ```
+
+> **`LOCAL_ONLY`** — by default the app rejects requests from non-LAN IPs. If you're running behind a reverse proxy or need to adjust this, add `LOCAL_ONLY=false` to your `.env.local`.
 
 ### 3. Configure Sudoers
 
@@ -76,6 +84,8 @@ This keeps the app running and restarts it on failure.
 ```bash
 sudo nano /etc/systemd/system/caddy-ui.service
 ```
+
+Next.js automatically loads `.env.local` at startup, so no extra environment configuration is needed in the service file.
 
 Paste the following, replacing `YOUR_USER` and the path if you cloned elsewhere:
 
