@@ -139,4 +139,4 @@ sudo systemctl restart caddy-ui
 
 ---
 
-# I think this goes without saying but do not expose this to the public internet directly.
+# I think this goes without saying but do not expose this to the public internet directly unless you know what you are doing. I strongly suggest only allowing local access.
