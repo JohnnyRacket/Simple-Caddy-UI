@@ -1,36 +1,142 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Simple Caddy UI
 
-## Getting Started
+A Next.js management UI for [Caddy](https://caddyserver.com/) — edit your Caddyfile, validate, format, reload, and tail logs from a browser.
 
-First, run the development server:
+---
+
+## Try It Out (Docker)
+
+The quickest way to kick the tires before committing to a full install. Requires [Docker](https://docs.docker.com/get-docker/) with the Compose plugin.
+
+```bash
+git clone https://github.com/JohnnyRacket/Simple-Caddy-UI.git caddy-ui
+cd caddy-ui
+docker compose up
+```
+
+Open [http://localhost:3000](http://localhost:3000) for the UI and [http://localhost:8080](http://localhost:8080) for the Caddy web server. Runs in dev mode against a sandboxed Caddy instance — no changes to your host system.
+
+---
+
+## Self-Hosted Setup
+
+These instructions are for deploying on a Linux machine (e.g. Raspberry Pi) that is already running Caddy.
+
+### 1. Install Node.js 24 LTS
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Verify
+node --version  # should be v24.x
+```
+
+### 2. Clone & Build
+
+```bash
+cd ~
+git clone https://github.com/JohnnyRacket/Simple-Caddy-UI.git caddy-ui
+cd caddy-ui
+
+npm install
+
+# Create env file — adjust path if your Caddyfile is elsewhere
+echo "CADDYFILE_PATH=/etc/caddy/Caddyfile" > .env.local
+
+npm run build
+```
+
+### 3. Configure Sudoers
+
+The app needs passwordless `sudo` for a few specific commands. Replace `YOUR_USER` with the user that will run the app (e.g. `pi`, `caddy`).
+
+```bash
+sudo visudo -f /etc/sudoers.d/caddy-ui
+```
+
+Paste the following, then save and exit:
+
+```
+YOUR_USER ALL=(ALL) NOPASSWD: /bin/cp /tmp/* /etc/caddy/Caddyfile
+YOUR_USER ALL=(ALL) NOPASSWD: /bin/systemctl reload caddy
+YOUR_USER ALL=(ALL) NOPASSWD: /usr/bin/caddy validate --config /etc/caddy/Caddyfile
+```
+
+Verify it works:
+
+```bash
+sudo /bin/systemctl reload caddy
+```
+
+### 4. Create a Systemd Service
+
+This keeps the app running and restarts it on failure.
+
+```bash
+sudo nano /etc/systemd/system/caddy-ui.service
+```
+
+Paste the following, replacing `YOUR_USER` and the path if you cloned elsewhere:
+
+```ini
+[Unit]
+Description=Caddy UI
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/home/caddy/caddy-ui
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+Environment=NODE_ENV=production PORT=3000
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now caddy-ui
+
+# Check it's running
+sudo systemctl status caddy-ui
+```
+
+### 5. Expose via Caddy (Local Network Only)
+
+First, find your machine's LAN IP:
+
+```bash
+ip addr show | grep "inet " | grep -v 127.0.0.1
+```
+
+Add a site block to your Caddyfile, replacing `192.168.x.x` with your actual LAN IP:
+
+```caddy
+:8080 {
+    bind 192.168.x.x
+    reverse_proxy localhost:3000
+}
+```
+
+Then reload Caddy:
+
+```bash
+sudo systemctl reload caddy
+```
+
+The UI will be available at `http://192.168.x.x:8080` from any device on your local network.
+
+---
+
+## Development
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
