@@ -12,20 +12,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
        | tee /etc/apt/sources.list.d/caddy-stable.list \
     && apt-get update && apt-get install -y caddy \
-    # Node.js 20
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    # Node.js 24
+    && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Create appuser + sudoers matching the Pi rules
-RUN useradd -m -s /bin/bash appuser \
-    && echo 'appuser ALL=(ALL) NOPASSWD: /bin/cp /tmp/caddyfile-* /etc/caddy/Caddyfile, /usr/bin/caddy validate --config /etc/caddy/Caddyfile, /usr/bin/systemctl reload caddy' \
-       > /etc/sudoers.d/caddy-ui \
+# Create caddy-ui service user + sudoers matching the Pi rules
+RUN useradd --system --no-create-home --shell /usr/sbin/nologin caddy-ui \
+    && echo 'caddy-ui ALL=(ALL) NOPASSWD: /bin/cp /tmp/caddyfile-*/Caddyfile /etc/caddy/Caddyfile' > /etc/sudoers.d/caddy-ui \
+    && echo 'caddy-ui ALL=(ALL) NOPASSWD: /usr/bin/caddy validate --config /etc/caddy/Caddyfile' >> /etc/sudoers.d/caddy-ui \
+    && echo 'caddy-ui ALL=(ALL) NOPASSWD: /usr/bin/systemctl reload caddy' >> /etc/sudoers.d/caddy-ui \
+    && echo 'caddy-ui ALL=(ALL) NOPASSWD: /usr/bin/journalctl -u caddy -f --no-pager -o short-iso' >> /etc/sudoers.d/caddy-ui \
     && chmod 0440 /etc/sudoers.d/caddy-ui
 
 # Caddy log directory
 RUN mkdir -p /var/log/caddy && touch /var/log/caddy/caddy.log \
-    && chown appuser:appuser /var/log/caddy/caddy.log
+    && chown caddy-ui:caddy-ui /var/log/caddy/caddy.log
 
 # Initial Caddyfile (world-readable so appuser can read without sudo)
 COPY docker/Caddyfile /etc/caddy/Caddyfile
@@ -36,9 +38,9 @@ RUN chmod 644 /etc/caddy/Caddyfile
 COPY docker/scripts/fake-systemctl.sh /usr/bin/systemctl
 RUN chmod +x /usr/bin/systemctl
 
-# Fake journalctl — /usr/local/bin takes priority in PATH
-COPY docker/scripts/fake-journalctl.sh /usr/local/bin/journalctl
-RUN chmod +x /usr/local/bin/journalctl
+# Fake journalctl at /usr/bin/journalctl (no real systemd in container, path is free)
+COPY docker/scripts/fake-journalctl.sh /usr/bin/journalctl
+RUN chmod +x /usr/bin/journalctl
 
 # supervisord config
 COPY docker/supervisord.conf /etc/supervisor/conf.d/caddy-ui.conf

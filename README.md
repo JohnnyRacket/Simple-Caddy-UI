@@ -76,9 +76,10 @@ sudo visudo -f /etc/sudoers.d/caddy-ui
 Paste the following, then save and exit:
 
 ```
-caddy-ui ALL=(ALL) NOPASSWD: /bin/cp /tmp/caddyfile-* /etc/caddy/Caddyfile
+caddy-ui ALL=(ALL) NOPASSWD: /bin/cp /tmp/caddyfile-*/Caddyfile /etc/caddy/Caddyfile
 caddy-ui ALL=(ALL) NOPASSWD: /bin/systemctl reload caddy
 caddy-ui ALL=(ALL) NOPASSWD: /usr/bin/caddy validate --config /etc/caddy/Caddyfile
+caddy-ui ALL=(ALL) NOPASSWD: /usr/bin/journalctl -u caddy -f --no-pager -o short-iso
 ```
 
 Verify it works:

@@ -16,7 +16,8 @@ export async function GET() {
 
   const stream = new ReadableStream({
     start(controller) {
-      proc = spawnStream("journalctl", [
+      proc = spawnStream("sudo", [
+        "/usr/bin/journalctl",
         "-u", "caddy",
         "-f",
         "--no-pager",

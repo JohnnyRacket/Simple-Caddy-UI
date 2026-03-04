@@ -35,7 +35,7 @@ export async function readCaddyfile(): Promise<string> {
 export async function saveCaddyfile(content: string): Promise<void> {
   // Use a private temp directory to prevent symlink/TOCTOU attacks
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "caddyfile-"));
-  const tmpPath = path.join(tmpDir, "config");
+  const tmpPath = path.join(tmpDir, "Caddyfile");
   await fs.writeFile(tmpPath, content, { encoding: "utf-8", mode: 0o600 });
   try {
     await runCommand("sudo", ["/bin/cp", tmpPath, CADDYFILE]);
