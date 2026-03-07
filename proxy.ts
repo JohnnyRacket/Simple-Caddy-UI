@@ -1,4 +1,3 @@
-import { networkInterfaces } from 'os'
 import { NextRequest, NextResponse } from 'next/server'
 
 const ALLOWED_RANGES = [
@@ -11,35 +10,6 @@ const ALLOWED_RANGES = [
   /^f[cd][0-9a-f]{2}:/i, // IPv6 ULA (fc00::/7)
 ]
 
-// Derive /64 prefixes from the server's own non-loopback IPv6 addresses.
-// Any client sharing a /64 prefix is on the same LAN segment.
-function getLanPrefixes(): string[] {
-  const prefixes: string[] = []
-  for (const iface of Object.values(networkInterfaces())) {
-    for (const addr of iface ?? []) {
-      if (addr.family === 'IPv6' && !addr.internal) {
-        const groups = addr.address.split(':')
-        if (groups.length >= 4) {
-          prefixes.push(groups.slice(0, 4).join(':') + ':')
-        }
-      }
-    }
-  }
-  return prefixes
-}
-
-const LAN_PREFIXES = getLanPrefixes()
-
-function isAllowed(ip: string): boolean {
-  if (ALLOWED_RANGES.some((r) => r.test(ip))) return true
-  if (LAN_PREFIXES.some((prefix) => ip.startsWith(prefix))) return true
-  const extra = (process.env.ALLOWED_EXTRA ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-  return extra.some((prefix) => ip.startsWith(prefix))
-}
-
 export function proxy(req: NextRequest) {
   const localOnly = process.env.LOCAL_ONLY !== 'false'
 
@@ -47,16 +17,15 @@ export function proxy(req: NextRequest) {
     const raw =
       req.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
       req.headers.get('x-real-ip')
-
     if (!raw) {
-      console.warn('[proxy] could not determine client IP (no proxy headers) — allowing through')
-      // fall through to auth check
-    } else {
-      const ip = raw.replace(/^::ffff:/, '')
-      if (!isAllowed(ip)) {
-        console.log(`[proxy] blocked ip=${ip}`)
-        return new NextResponse('Forbidden', { status: 403 })
-      }
+      console.log(`[proxy] blocked — could not determine client IP`)
+      return new NextResponse('Forbidden', { status: 403 })
+    }
+    const ip = raw.replace(/^::ffff:/, '')
+
+    if (!ALLOWED_RANGES.some((r) => r.test(ip))) {
+      console.log(`[proxy] blocked ip=${ip}`)
+      return new NextResponse('Forbidden', { status: 403 })
     }
   }
 
