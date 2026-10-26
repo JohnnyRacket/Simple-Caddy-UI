@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.1.1] — 2026-10-25
+
+### Fixed
+
+- **Login blocked with 403 over plain HTTP.** Browsers only send `Sec-Fetch-Site` to HTTPS/localhost, and `Referrer-Policy: no-referrer` made them send `Origin: null` on the login form, which the CSRF check rejected. The policy is now `same-origin`.
+
+### Added
+
+- `scripts/deploy.sh` — update a self-hosted install with build-aside, smoke tests and automatic rollback.
+- `GET /api/health` (authenticated) — reports the version and git commit being served.
+
 ## [1.1.0] — 2026-10-25
 
 ### Security

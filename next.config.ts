@@ -1,7 +1,17 @@
+import { execFileSync } from "node:child_process";
 import type { NextConfig } from "next";
+
+function gitCommit(): string {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf-8" }).trim();
+  } catch {
+    return "unknown";
+  }
+}
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  env: { GIT_COMMIT: gitCommit() },
   async headers() {
     return [
       {
@@ -9,7 +19,9 @@ const nextConfig: NextConfig = {
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
-          { key: "Referrer-Policy", value: "no-referrer" },
+          // Not no-referrer: that makes browsers send `Origin: null` on same-origin
+          // form posts, which the CSRF check in proxy.ts must reject.
+          { key: "Referrer-Policy", value: "same-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
           {
             key: "Content-Security-Policy",

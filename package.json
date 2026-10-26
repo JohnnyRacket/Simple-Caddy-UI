@@ -1,6 +1,6 @@
 {
   "name": "caddy-ui",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "A Next.js management UI for Caddy — edit your Caddyfile, validate, format, reload, and tail logs from a browser.",
   "author": "Johnnyracket",
   "license": "MIT",

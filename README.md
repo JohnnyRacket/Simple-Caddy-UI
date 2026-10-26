@@ -147,10 +147,17 @@ Once running, the UI is available at `http://<machine-ip>:3000` from any device 
 ## Updating
 
 ```bash
-sudo -u caddy-ui git -C /opt/caddy-ui pull
-sudo -u caddy-ui npm --prefix /opt/caddy-ui install
-sudo -u caddy-ui npm --prefix /opt/caddy-ui run build
-sudo systemctl restart caddy-ui
+sudo bash /opt/caddy-ui/scripts/deploy.sh            # latest main
+sudo bash /opt/caddy-ui/scripts/deploy.sh <git-ref>  # or a specific commit/tag
+```
+
+The script builds the new version alongside the running one, installs the sudoers rules it needs, swaps it in, and smoke-tests it (login, auth, CSRF, read, validate, and a no-op save). If any check fails it restores the previous version and sudoers automatically. It never edits or reloads Caddy. The previous version is kept at `/opt/caddy-ui.prev`.
+
+Upgrading from 1.0.x (no `scripts/` yet)? Fetch the script once:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/JohnnyRacket/Simple-Caddy-UI/main/scripts/deploy.sh -o /tmp/deploy.sh
+sudo bash /tmp/deploy.sh
 ```
 
 ---

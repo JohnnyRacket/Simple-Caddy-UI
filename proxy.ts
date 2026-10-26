@@ -16,6 +16,8 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
 // Cookies are sent on same-site requests, and other ports on this host or
 // sibling subdomains count as same-site, so SameSite alone doesn't stop CSRF.
+// Browsers only send Sec-Fetch-Site to HTTPS/localhost, so over plain HTTP on
+// the LAN this falls back to Origin.
 function isCrossOrigin(req: NextRequest): boolean {
   const site = req.headers.get('sec-fetch-site')
   if (site) return site !== 'same-origin' && site !== 'none'
@@ -41,7 +43,10 @@ export function proxy(req: NextRequest) {
   }
 
   if (!SAFE_METHODS.has(req.method) && isCrossOrigin(req)) {
-    console.log(`[proxy] blocked cross-origin ${req.method} ${req.nextUrl.pathname}`)
+    console.log(
+      `[proxy] blocked cross-origin ${req.method} ${req.nextUrl.pathname}` +
+        ` origin=${req.headers.get('origin')} sec-fetch-site=${req.headers.get('sec-fetch-site')} host=${req.headers.get('host')}`,
+    )
     return new NextResponse('Forbidden', { status: 403 })
   }
 
