@@ -10,13 +10,14 @@ import {
 } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import pkg from "@/package.json";
-import { siteMap } from "./analyze";
+import { siteMap, unifiedDiff } from "./analyze";
 import { adaptContent, formatCaddyfile, readWithEtag, validateContent } from "./caddyfile";
 import { checkImports } from "./analyze";
 import { checkDomain } from "./domain";
 import { getSnapshot, listEntries, type Actor } from "./history";
 import { recentLogs } from "./logs";
 import { applyProposal, createProposal, decide, getProposal, ProposalError, type Proposal } from "./proposals";
+import { redactSecrets, restoreSecrets, scrubSecrets, SecretError } from "./secrets";
 import { removeSite, SiteError, upsertSite } from "./sites";
 
 /** `chat`: approve in OpenChamber's form or the UI. `ui`: only the UI (needs your UI login). */
@@ -24,7 +25,7 @@ const APPROVAL_MODE = process.env.CADDY_MCP_APPROVAL === "ui" ? "ui" : "chat";
 
 const INSTRUCTIONS = `Manages the live Caddyfile of a Caddy server that serves public sites.
 Changes are never applied in one step:
-1. Read the Caddyfile (read) to get its text and etag, or use list_sites for an overview.
+1. Read the Caddyfile (read) to get its text and etag, or use list_sites for an overview. Secrets are shown as [REDACTED:n]; leave blocks holding them exactly as read and the real values are kept.
 2. Prepare a change with propose_change (whole file, needs base_etag), propose_site / propose_remove_site (one managed site), or propose_rollback. These validate and return a proposal with a diff and risk flags. Nothing is written.
 3. Show the user the summary, the risk flags and the diff, and explain them.
 4. Call apply with the proposal_id. The user approves it (an approval form, their client's permission prompt for apply, or the caddy-ui Changes page); only an approved proposal is applied, and a failed reload or a site that starts answering differently rolls it back automatically. Never call apply before showing the diff.
@@ -42,7 +43,13 @@ function actorFrom(authInfo: AuthInfo | undefined, ctx: ServerContext): Actor {
   return { kind: "mcp", tokenId: String(authInfo?.extra?.tokenId ?? ""), tokenName: authInfo?.clientId ?? "unknown", sessionId };
 }
 
-function describeProposal(p: Proposal, baseUrl: string): string {
+/** The proposal's diff with secrets redacted, numbered as in `read`. */
+function redactedDiff(before: string, after: string): string {
+  const old = redactSecrets(before);
+  return unifiedDiff(old.content, redactSecrets(after, old.numbering).content);
+}
+
+function describeProposal(p: Proposal, baseUrl: string, diff: string): string {
   const a = p.analysis;
   const sites = [
     a.added.length ? `added: ${a.added.join(", ")}` : "",
@@ -57,7 +64,7 @@ function describeProposal(p: Proposal, baseUrl: string): string {
     `Review/approve in the UI: ${baseUrl}/changes?proposal=${p.id}`,
     `Expires: ${p.expiresAt}`,
     "",
-    a.diff,
+    diff,
   ].join("\n");
 }
 
@@ -81,11 +88,16 @@ export function buildServer(authInfo: AuthInfo | undefined, requestInfo: Request
 
   server.registerTool(
     "read",
-    { description: "The live Caddyfile and its etag (pass the etag as base_etag to propose_change).", annotations: { readOnlyHint: true } },
+    {
+      description: "The live Caddyfile and its etag (pass the etag as base_etag to propose_change). Secrets are shown as [REDACTED:n].",
+      annotations: { readOnlyHint: true },
+    },
     async () => {
       try {
-        const { content, etag } = await readWithEtag();
-        return { content: [{ type: "text", text: `etag: ${etag}\n\n${content}` }], structuredContent: { etag, content } };
+        const live = await readWithEtag();
+        const { content, count } = redactSecrets(live.content);
+        const note = count ? `${count} secret value(s) shown as [REDACTED:n]; leave blocks holding them as they are.\n` : "";
+        return { content: [{ type: "text", text: `etag: ${live.etag}\n${note}\n${content}` }], structuredContent: { etag: live.etag, content, redacted: count } };
       } catch (err) {
         return errorText(err);
       }
@@ -124,8 +136,14 @@ export function buildServer(authInfo: AuthInfo | undefined, requestInfo: Request
     async ({ content }) => {
       const guard = checkImports(content);
       if (guard.length) return text(guard.join("\n"), true);
-      const r = await validateContent(content);
-      return text(r.ok ? `Valid.\n${r.output}` : `Invalid.\n${r.output}`, !r.ok);
+      try {
+        const live = (await readWithEtag()).content;
+        const r = await validateContent(restoreSecrets(content, live));
+        const output = scrubSecrets(r.output, live);
+        return text(r.ok ? `Valid.\n${output}` : `Invalid.\n${output}`, !r.ok);
+      } catch (err) {
+        return errorText(err);
+      }
     },
   );
 
@@ -153,10 +171,10 @@ export function buildServer(authInfo: AuthInfo | undefined, requestInfo: Request
     "history",
     { description: "Recent Caddyfile changes (newest first): who, when, outcome, sites touched, risk flags.", inputSchema: z.object({ limit: z.number().int().min(1).max(50).optional() }), annotations: { readOnlyHint: true } },
     async ({ limit }) => {
-      const entries = await listEntries(limit ?? 10);
+      const [entries, live] = await Promise.all([listEntries(limit ?? 10), readWithEtag()]);
       return json({
         entries: entries.map((e) => ({
-          id: e.id, at: e.at, actor: e.actor, summary: e.summary, outcome: e.outcome, message: e.message,
+          id: e.id, at: e.at, actor: e.actor, summary: e.summary, outcome: e.outcome, message: e.message && scrubSecrets(e.message, live.content),
           touched: e.analysis?.touched, risks: e.analysis?.risks.map((r) => r.message),
         })),
       });
@@ -183,11 +201,13 @@ export function buildServer(authInfo: AuthInfo | undefined, requestInfo: Request
 
   if (!canWrite) return server;
 
-  const propose = async (content: string, baseEtag: string | undefined, summary: string, ctx: ServerContext) => {
-    const { proposal, errors } = await createProposal(content, baseEtag, actorFrom(authInfo, ctx), summary);
-    if (!proposal) return text(`Not proposed:\n${errors.join("\n")}`, true);
+  /** `base` is the live file the change was written against. */
+  const propose = async (content: string, base: { content: string; etag: string }, summary: string, ctx: ServerContext) => {
+    const { proposal, errors } = await createProposal(content, base.etag, actorFrom(authInfo, ctx), summary);
+    if (!proposal) return text(`Not proposed:\n${scrubSecrets(errors.join("\n"), base.content)}`, true);
+    const diff = redactedDiff(base.content, proposal.content);
     return {
-      content: [{ type: "text" as const, text: `${describeProposal(proposal, baseUrl)}\n\nShow the user this summary, the risk flags and the diff. Then call apply with proposal_id ${proposal.id}.` }],
+      content: [{ type: "text" as const, text: `${describeProposal(proposal, baseUrl, diff)}\n\nShow the user this summary, the risk flags and the diff. Then call apply with proposal_id ${proposal.id}.` }],
       structuredContent: {
         proposal_id: proposal.id,
         status: proposal.status,
@@ -198,7 +218,7 @@ export function buildServer(authInfo: AuthInfo | undefined, requestInfo: Request
         changed: proposal.analysis.changed,
         changed_lines: proposal.analysis.changedLines,
         // Clients that only pass structured results on (e.g. Code Mode) still get the diff to show
-        diff: proposal.analysis.diff,
+        diff,
         review_url: `${baseUrl}/changes?proposal=${proposal.id}`,
         expires_at: proposal.expiresAt,
       },
@@ -215,7 +235,16 @@ export function buildServer(authInfo: AuthInfo | undefined, requestInfo: Request
         summary: z.string().max(300).describe("One line saying what the change does and why"),
       }),
     },
-    async ({ content, base_etag, summary }, ctx) => propose(content, base_etag, summary, ctx),
+    async ({ content, base_etag, summary }, ctx) => {
+      try {
+        const live = await readWithEtag();
+        // On a stale base, createProposal reports the conflict; restoring against the wrong file would only confuse
+        const full = live.etag === base_etag ? restoreSecrets(content, live.content) : content;
+        return propose(full, { content: live.content, etag: base_etag }, summary, ctx);
+      } catch (err) {
+        return err instanceof SecretError ? text(`Not proposed:\n${err.message}`, true) : errorText(err);
+      }
+    },
   );
 
   server.registerTool(
@@ -233,9 +262,9 @@ export function buildServer(authInfo: AuthInfo | undefined, requestInfo: Request
     },
     async ({ host, template, upstream, rate_limit, auth, summary }, ctx) => {
       try {
-        const { content, etag } = await readWithEtag();
-        const result = upsertSite(content, { host, template, upstream, rateLimit: rate_limit, auth });
-        return propose(result.content, etag, summary ?? `${result.replaced ? "Update" : "Add"} site ${host} (${template})`, ctx);
+        const live = await readWithEtag();
+        const result = upsertSite(live.content, { host, template, upstream, rateLimit: rate_limit, auth });
+        return propose(result.content, live, summary ?? `${result.replaced ? "Update" : "Add"} site ${host} (${template})`, ctx);
       } catch (err) {
         return err instanceof SiteError ? text(err.message, true) : errorText(err);
       }
@@ -247,8 +276,8 @@ export function buildServer(authInfo: AuthInfo | undefined, requestInfo: Request
     { description: "Propose removing a managed site. Writes nothing.", inputSchema: z.object({ host: z.string(), summary: z.string().max(300).optional() }) },
     async ({ host, summary }, ctx) => {
       try {
-        const { content, etag } = await readWithEtag();
-        return propose(removeSite(content, host), etag, summary ?? `Remove site ${host}`, ctx);
+        const live = await readWithEtag();
+        return propose(removeSite(live.content, host), live, summary ?? `Remove site ${host}`, ctx);
       } catch (err) {
         return err instanceof SiteError ? text(err.message, true) : errorText(err);
       }
@@ -264,8 +293,7 @@ export function buildServer(authInfo: AuthInfo | undefined, requestInfo: Request
     async ({ history_id, summary }, ctx) => {
       const before = await getSnapshot(history_id, "before");
       if (before === null) return text(`no history entry ${history_id}`, true);
-      const { etag } = await readWithEtag();
-      return propose(before, etag, summary ?? `Roll back change ${history_id}`, ctx);
+      return propose(before, await readWithEtag(), summary ?? `Roll back change ${history_id}`, ctx);
     },
   );
 
@@ -319,10 +347,11 @@ export function buildServer(authInfo: AuthInfo | undefined, requestInfo: Request
         }
         if (p.status !== "approved") return text(`Proposal ${p.id} is ${p.status}${p.result ? `: ${p.result}` : ""}.`, p.status !== "applied");
 
-        const { result } = await applyProposal(p.id, actorFrom(authInfo, ctx));
+        const { proposal, result } = await applyProposal(p.id, actorFrom(authInfo, ctx));
+        const message = scrubSecrets(result.message, proposal.content);
         return {
-          content: [{ type: "text", text: `${result.ok ? "✓" : "✗"} ${result.outcome}: ${result.message}${result.historyId ? `\nHistory: ${result.historyId}` : ""}` }],
-          structuredContent: { ok: result.ok, outcome: result.outcome, message: result.message, history_id: result.historyId ?? null },
+          content: [{ type: "text", text: `${result.ok ? "✓" : "✗"} ${result.outcome}: ${message}${result.historyId ? `\nHistory: ${result.historyId}` : ""}` }],
+          structuredContent: { ok: result.ok, outcome: result.outcome, message, history_id: result.historyId ?? null },
           ...(!result.ok && result.outcome !== "noop" ? { isError: true } : {}),
         };
       } catch (err) {

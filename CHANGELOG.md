@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Security
+
+- The MCP server no longer shows secrets. `read`, proposal diffs, validation output and history messages show OAuth client secrets, API keys and tokens, passwords, `basic_auth` hashes, `Authorization`/`Cookie`/`X-Api-Key` header values, DNS provider tokens and caddy-security signing keys as `[REDACTED:n]`. `propose_change` puts the real values back, but only if every block holding one is unchanged and in the same place, so a client can't move a secret into a response or point it at another server. The web UI still shows the full file.
+
 ## [1.2.1] — 2026-10-26
 
 ### Added

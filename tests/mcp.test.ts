@@ -290,6 +290,29 @@ describe("safety", () => {
     expect(codes).toEqual(["global_options", "site_removed"]);
   });
 
+  it("never shows secrets, and keeps them through a whole-file change", async () => {
+    const SECRET = "8GzWeMD4z8i3o2ZQb5nDF0tI";
+    fs.writeFileSync(env.caddyfile, ORIGINAL.replace("security {", `security {\n\t\toauth identity provider generic {\n\t\t\tclient_secret ${SECRET}\n\t\t}`));
+    const r = await call(session.client, "read");
+    const { etag, content } = r.r.structuredContent as { etag: string; content: string };
+    expect(r.text).not.toContain(SECRET);
+    expect(content).toContain("client_secret [REDACTED:1]");
+
+    const leak = await call(session.client, "propose_change", { content: content + "\nleak.example.com {\n\trespond [REDACTED:1]\n}\n", base_etag: etag, summary: "leak" });
+    expect(leak.isError).toBe(true);
+    expect(leak.text).toMatch(/holds a redacted secret/);
+
+    const p = await call(session.client, "propose_change", { content: content + "\nnew.example.com {\n\timport dokploy_proxy\n}\n", base_etag: etag, summary: "add new" });
+    expect(p.isError).toBe(false);
+    expect(p.text).not.toContain(SECRET);
+    expect((p.r.structuredContent as { diff: string }).diff).not.toContain(SECRET);
+    const a = await call(session.client, "apply", { proposal_id: (p.r.structuredContent as { proposal_id: string }).proposal_id });
+    expect(a.text).toMatch(/applied/);
+    const written = fs.readFileSync(env.caddyfile, "utf-8");
+    expect(written).toContain(`client_secret ${SECRET}`);
+    expect(written).toContain("new.example.com");
+  });
+
   it("falls back to UI approval for clients without elicitation", async () => {
     const plain = await connect(writeToken, { era: "modern", elicitation: false });
     const p = await call(plain.client, "propose_site", { host: "new.example.com", template: "dokploy" });

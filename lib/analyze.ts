@@ -109,13 +109,16 @@ export function siteMap(json: CaddyJson, content: string): Map<string, SiteInfo>
 
 const stripScheme = (addr: string) => addr.replace(/^https?:\/\//, "").replace(/:\d+$/, "").replace(/\/.*$/, "").toLowerCase();
 
+export const unifiedDiff = (oldText: string, newText: string) =>
+  createTwoFilesPatch("Caddyfile", "Caddyfile", oldText, newText, "current", "proposed", { context: 3 });
+
 export function analyzeChange(
   oldText: string,
   newText: string,
   oldSites: Map<string, SiteInfo>,
   newSites: Map<string, SiteInfo>,
 ): ChangeAnalysis {
-  const diff = createTwoFilesPatch("Caddyfile", "Caddyfile", oldText, newText, "current", "proposed", { context: 3 });
+  const diff = unifiedDiff(oldText, newText);
   const changedLines = diffLines(oldText, newText)
     .filter((p) => p.added || p.removed)
     .reduce((n, p) => n + (p.count ?? 0), 0);
