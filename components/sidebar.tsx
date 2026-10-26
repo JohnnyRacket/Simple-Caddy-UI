@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { FileCode2, ScrollText, Server, LogOut } from "lucide-react";
+import { FileCode2, GitCompare, KeyRound, ScrollText, Server, LogOut } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -23,7 +23,9 @@ import {
 
 const navItems = [
   { href: "/editor", label: "Editor", icon: FileCode2 },
+  { href: "/changes", label: "Changes", icon: GitCompare },
   { href: "/logs", label: "Logs", icon: ScrollText },
+  { href: "/tokens", label: "MCP tokens", icon: KeyRound },
 ];
 
 export function Sidebar() {

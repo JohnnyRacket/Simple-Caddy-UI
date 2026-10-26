@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.2.0] — 2026-10-26
+
+### Added
+
+- **MCP server** at `/api/mcp` (official TypeScript SDK v2, Streamable HTTP): read, list_sites, format, validate, logs, history, check_domain, and propose_change / propose_site / propose_remove_site / propose_rollback → apply. Scoped `read`/`write` tokens, created on the new **MCP tokens** page.
+- **Approval before every change**: proposals carry a diff and risk flags; `apply` asks through an MCP approval form (2026-07-28 protocol clients) or the new **Changes** page, and applies exactly the approved text.
+- **Safe saves** for the editor and agents alike: version check (ETag), validate before writing, snapshot, reload, confirm Caddy runs the new config, health-check untouched sites, automatic rollback. Change history with diffs and restore.
+- Tests: unit and MCP flow tests (`npm test`) and an integration suite against real Caddy in Docker (`npm run test:integration`).
+
+### Changed
+
+- Validate checks the editor's text (not the file on disk); Save validates, writes and reloads in one step.
+- Sudoers: validation reads from stdin (`caddy validate --config - --adapter caddyfile`), plus `journalctl -n 500 -o json` for the logs tool. New data directory `/var/lib/caddy-ui`. `scripts/deploy.sh` installs both.
+
+### Security
+
+- Child processes run with a minimal environment, so `{$SECRET_TOKEN}`-style placeholders can't leak the app's secrets through `caddy adapt`.
+- Agent-submitted Caddyfiles may only import snippets or files under `/etc/caddy`, and may not bind Caddy's admin port or change the `admin` option (a site on the admin port makes later reloads silently do nothing).
+
 ## [1.1.1] — 2026-10-25
 
 ### Fixed

@@ -33,10 +33,13 @@ SUDOERS=/etc/sudoers.d/caddy-ui
 CADDYFILE=/etc/caddy/Caddyfile
 BACKUP=/root/caddy-ui-backup-$(date +%Y%m%d-%H%M%S)
 
+DATA_DIR=/var/lib/caddy-ui # MCP tokens, proposals, change history
+
 SUDOERS_RULES='caddy-ui ALL=(root) NOPASSWD: /usr/bin/tee /etc/caddy/Caddyfile
 caddy-ui ALL=(root) NOPASSWD: /bin/systemctl reload caddy
-caddy-ui ALL=(caddy) NOPASSWD: /usr/bin/caddy validate --config /etc/caddy/Caddyfile
-caddy-ui ALL=(root) NOPASSWD: /usr/bin/journalctl -u caddy -f --no-pager -o short-iso'
+caddy-ui ALL=(caddy) NOPASSWD: /usr/bin/caddy validate --config - --adapter caddyfile
+caddy-ui ALL=(root) NOPASSWD: /usr/bin/journalctl -u caddy -f --no-pager -o short-iso
+caddy-ui ALL=(root) NOPASSWD: /usr/bin/journalctl -u caddy -n 500 --no-pager -o json'
 
 step() { printf '\n==> %s\n' "$*"; }
 die() { printf '\n!!! %s\n' "$*" >&2; exit 1; }
@@ -71,12 +74,57 @@ expect() { # label, expected HTTP code, curl args...
   if [[ $got == "$want" ]]; then printf '    ok   %-30s %s\n' "$label" "$got"
   else printf '    FAIL %-30s got %s want %s\n' "$label" "$got" "$want"; head -c 400 "$WORK/out"; echo; return 1; fi
 }
-save_same_content() {
-  python3 -c 'import json,sys; print(json.dumps({"content": open(sys.argv[1]).read()}))' "$CADDYFILE" > "$WORK/save.json"
-  expect "save (identical content)" 200 -X POST -H 'content-type: application/json' \
-    --data-binary @"$WORK/save.json" "$URL/api/caddyfile"
-  [[ $(sha256sum "$CADDYFILE" | cut -d' ' -f1) == "$CADDYFILE_SHA" ]] || { echo "    FAIL Caddyfile changed!"; return 1; }
-  echo "    ok   Caddyfile unchanged (sha256)"
+ok() { printf '    ok   %s\n' "$*"; }
+fail() { printf '    FAIL %s\n' "$*"; false; }
+
+# Each sudo rule the app relies on, exercised for real as caddy-ui
+check_sudo_rules() {
+  cp "$CADDYFILE" "$WORK/caddyfile"
+  # Byte-identical write through the tee rule (from a copy: tee truncates its target first)
+  sudo -u caddy-ui sudo -n /usr/bin/tee "$CADDYFILE" < "$WORK/caddyfile" > /dev/null || fail "sudo tee rule"
+  [[ $(sha256sum "$CADDYFILE" | cut -d' ' -f1) == "$CADDYFILE_SHA" ]] || fail "Caddyfile changed!"
+  ok "sudo tee rule (identical write, sha256 unchanged)"
+  sudo -u caddy-ui sudo -n -u caddy /usr/bin/caddy validate --config - --adapter caddyfile < "$WORK/caddyfile" > /dev/null 2>&1 \
+    || fail "sudo validate-from-stdin rule"
+  ok "sudo validate rule (stdin, as caddy)"
+  sudo -u caddy-ui sudo -n /usr/bin/journalctl -u caddy -n 500 --no-pager -o json > /dev/null || fail "sudo journalctl rule"
+  ok "sudo journalctl rule"
+}
+
+# The app confirms each reload by reading Caddy's running config back; it must match caddy adapt
+check_admin_readback() {
+  (cd "$(dirname "$CADDYFILE")" && sudo -u caddy-ui env -i PATH=/usr/bin:/bin /usr/bin/caddy adapt --config - --adapter caddyfile < "$WORK/caddyfile" 2>/dev/null) > "$WORK/adapted.json"
+  sudo -u caddy-ui env -i PATH=/usr/bin:/bin curl -s -m 5 http://127.0.0.1:2019/config/ > "$WORK/running.json"
+  python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])) == json.load(open(sys.argv[2])) else 1)' "$WORK/adapted.json" "$WORK/running.json" \
+    || fail "Caddy's running config does not match caddy adapt of the Caddyfile"
+  ok "running config reads back and matches the Caddyfile"
+}
+
+# A real MCP round trip with a temporary read token
+check_mcp() {
+  code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URL/api/mcp")
+  [[ $code == 401 ]] || fail "MCP without token got $code want 401"
+  ok "MCP without token -> 401"
+  curl -s -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' -X POST -d '{"name":"deploy-smoke-'$$'","scope":"read"}' "$URL/api/tokens" > "$WORK/tok.json"
+  local mcp_token token_id
+  mcp_token=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["token"])' "$WORK/tok.json") || fail "could not create a token"
+  token_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["record"]["id"])' "$WORK/tok.json")
+  curl -s -H "Authorization: Bearer $mcp_token" -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+    -H 'mcp-protocol-version: 2025-06-18' -X POST "$URL/api/mcp" \
+    -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_sites","arguments":{}}}' > "$WORK/mcp.out"
+  curl -s -o /dev/null -H "Authorization: Bearer $TOKEN" -X DELETE "$URL/api/tokens/$token_id"
+  grep -q '\\"sites\\"' "$WORK/mcp.out" || fail "MCP list_sites: $(head -c 300 "$WORK/mcp.out")"
+  ok "MCP list_sites with a temporary token (revoked again)"
+}
+
+# Saving unchanged content through the app: validates, then reports no change
+check_noop_save() {
+  curl -s -H "Authorization: Bearer $TOKEN" "$URL/api/caddyfile" > "$WORK/read.json"
+  python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(json.dumps({"content": d["content"], "etag": d["etag"]}))' "$WORK/read.json" > "$WORK/save.json"
+  expect "save (unchanged content)" 200 -X POST -H 'content-type: application/json' --data-binary @"$WORK/save.json" "$URL/api/caddyfile"
+  grep -q '"outcome":"noop"' "$WORK/out" || fail "expected a no-op save: $(head -c 300 "$WORK/out")"
+  [[ $(sha256sum "$CADDYFILE" | cut -d' ' -f1) == "$CADDYFILE_SHA" ]] || fail "Caddyfile changed!"
+  ok "Caddyfile unchanged (sha256)"
 }
 
 step "Backing up to $BACKUP"
@@ -119,6 +167,10 @@ rollback() {
 }
 trap rollback ERR
 
+step "Data directory $DATA_DIR"
+install -d -o caddy-ui -g caddy-ui -m 700 "$DATA_DIR"
+echo "    ok"
+
 step "Sudoers: new rules alongside the current ones"
 install_sudoers "$OLD_SUDOERS
 $SUDOERS_RULES"
@@ -150,11 +202,13 @@ echo "    ok   same-origin login -> 303"
 expect "read Caddyfile" 200 "$URL/api/caddyfile"
 expect "editor page" 200 "$URL/editor"
 expect "validate (as caddy)" 200 -X POST "$URL/api/caddy/validate"
-save_same_content
+check_noop_save
+check_mcp
 
 step "Sudoers: exactly the rules this version needs"
 install_sudoers "$SUDOERS_RULES"
-save_same_content
+check_sudo_rules
+check_admin_readback
 
 trap - ERR
 chmod 600 "$APP/.env.local"

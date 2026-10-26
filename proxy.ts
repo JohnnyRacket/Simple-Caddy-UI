@@ -60,6 +60,8 @@ export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
   if (
     pathname === '/login' ||
+    pathname === '/api/mcp' || // checks its own scoped MCP tokens
+
     pathname.startsWith('/api/auth/') ||
     pathname.startsWith('/_next/')
   ) {

@@ -1,5 +1,10 @@
 import { spawn } from "child_process";
 
+// Child processes get only this environment, never the app's own, which holds
+// SECRET_TOKEN from .env.local. Caddy expands {$VAR} placeholders while
+// adapting, so an inherited environment could leak into its output.
+const MINIMAL_ENV = { PATH: "/usr/local/bin:/usr/bin:/bin", LANG: "C.UTF-8" } as unknown as NodeJS.ProcessEnv;
+
 export class CommandError extends Error {
   constructor(
     public cmd: string,
@@ -14,7 +19,7 @@ export class CommandError extends Error {
         : causeStr.includes("EACCES")
           ? `permission denied running: ${cmd}`
           : causeStr.includes("timed out")
-            ? `command timed out after 15s`
+            ? `command timed out`
             : stderr.trim() || causeStr;
     super(`[${cmd}] ${hint}`);
     this.name = "CommandError";
@@ -24,11 +29,13 @@ export class CommandError extends Error {
 export function runCommand(
   cmd: string,
   args: string[],
-  opts?: { input?: string; timeoutMs?: number },
+  opts?: { input?: string; timeoutMs?: number; cwd?: string },
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const proc = spawn(cmd, args, {
       stdio: opts?.input !== undefined ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
+      cwd: opts?.cwd,
+      env: MINIMAL_ENV,
     });
 
     let stdout = "";
@@ -44,6 +51,7 @@ export function runCommand(
     proc.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
 
     if (opts?.input !== undefined && proc.stdin) {
+      proc.stdin.on("error", () => { /* process exited before reading stdin; reported via close */ });
       proc.stdin.write(opts.input);
       proc.stdin.end();
     }
@@ -67,5 +75,5 @@ export function runCommand(
 }
 
 export function spawnStream(cmd: string, args: string[]) {
-  return spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+  return spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], env: MINIMAL_ENV });
 }

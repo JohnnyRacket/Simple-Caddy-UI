@@ -20,10 +20,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Create caddy-ui service user + sudoers matching the Pi rules
 RUN useradd --system --no-create-home --shell /usr/sbin/nologin caddy-ui \
     && echo 'caddy-ui ALL=(root) NOPASSWD: /usr/bin/tee /etc/caddy/Caddyfile' > /etc/sudoers.d/caddy-ui \
-    && echo 'caddy-ui ALL=(caddy) NOPASSWD: /usr/bin/caddy validate --config /etc/caddy/Caddyfile' >> /etc/sudoers.d/caddy-ui \
+    && echo 'caddy-ui ALL=(caddy) NOPASSWD: /usr/bin/caddy validate --config - --adapter caddyfile' >> /etc/sudoers.d/caddy-ui \
     && echo 'caddy-ui ALL=(root) NOPASSWD: /usr/bin/systemctl reload caddy' >> /etc/sudoers.d/caddy-ui \
     && echo 'caddy-ui ALL=(root) NOPASSWD: /usr/bin/journalctl -u caddy -f --no-pager -o short-iso' >> /etc/sudoers.d/caddy-ui \
+    && echo 'caddy-ui ALL=(root) NOPASSWD: /usr/bin/journalctl -u caddy -n 500 --no-pager -o json' >> /etc/sudoers.d/caddy-ui \
     && chmod 0440 /etc/sudoers.d/caddy-ui
+
+# MCP tokens, proposals and change history
+RUN install -d -o caddy-ui -g caddy-ui -m 700 /var/lib/caddy-ui
 
 # Caddy log directory
 RUN mkdir -p /var/log/caddy && touch /var/log/caddy/caddy.log \

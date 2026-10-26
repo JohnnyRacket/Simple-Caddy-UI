@@ -11,6 +11,9 @@ function gitCommit(): string {
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // `next dev` blocks its dev resources (hot reload) for hosts other than localhost,
+  // and pages then never hydrate. List LAN hostnames/IPs here to develop over the network.
+  allowedDevOrigins: (process.env.ALLOWED_DEV_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
   env: { GIT_COMMIT: gitCommit() },
   async headers() {
     return [
@@ -29,7 +32,8 @@ const nextConfig: NextConfig = {
             // Nonce-based CSP would require custom server instrumentation; not implemented here.
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline'",
+              // React's development build needs eval for its debugging features; production never does
+              `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}`,
               "style-src 'self' 'unsafe-inline'",
               "font-src 'self' data:",
               "img-src 'self' data:",

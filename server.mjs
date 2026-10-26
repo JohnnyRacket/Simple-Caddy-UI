@@ -45,13 +45,18 @@ function resolveClientIp(req) {
   return hops.at(-1) ?? peer;
 }
 
-const app = next({ dev, hostname: host, port });
+const server = createServer((req, res) => {
+  req.headers["x-forwarded-for"] = resolveClientIp(req);
+  handle(req, res);
+});
+
+// Hand Next the server so it can attach its WebSocket upgrade handler (dev
+// hot reload). Left to itself it looks for req.socket.server, which newer Node
+// doesn't set, and the dev client then falls back to full page reloads.
+const app = next({ dev, hostname: host, port, httpServer: server });
 const handle = app.getRequestHandler();
 await app.prepare();
 
-createServer((req, res) => {
-  req.headers["x-forwarded-for"] = resolveClientIp(req);
-  handle(req, res);
-}).listen(port, host, () => {
+server.listen(port, host, () => {
   console.log(`> Caddy UI ready on http://${host ?? "localhost"}:${port} (${dev ? "dev" : "production"})`);
 });

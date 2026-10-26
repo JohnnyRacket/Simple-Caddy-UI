@@ -6,10 +6,12 @@ import { cn } from "@/lib/utils";
 interface OutputPanelProps {
   output: string | null;
   ok: boolean | null;
+  /** Header label; defaults to Valid / Invalid */
+  title?: string;
   onClear: () => void;
 }
 
-export function OutputPanel({ output, ok, onClear }: OutputPanelProps) {
+export function OutputPanel({ output, ok, title, onClear }: OutputPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   if (!output) return null;
@@ -27,7 +29,7 @@ export function OutputPanel({ output, ok, onClear }: OutputPanelProps) {
                 : "text-muted-foreground",
           )}
         >
-          {ok === true ? "Valid" : ok === false ? "Invalid" : "Output"}
+          {title ?? (ok === true ? "Valid" : ok === false ? "Invalid" : "Output")}
         </span>
         <div className="ml-auto flex items-center gap-1">
           <button
