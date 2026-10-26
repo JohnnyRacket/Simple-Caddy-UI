@@ -27,7 +27,8 @@ Changes are never applied in one step:
 1. Read the Caddyfile (read) to get its text and etag, or use list_sites for an overview.
 2. Prepare a change with propose_change (whole file, needs base_etag), propose_site / propose_remove_site (one managed site), or propose_rollback. These validate and return a proposal with a diff and risk flags. Nothing is written.
 3. Show the user the summary, the risk flags and the diff, and explain them.
-4. Call apply with the proposal_id. The user is asked to approve it; only an approved proposal is applied, and a failed reload or a site that starts answering differently rolls it back automatically.
+4. Call apply with the proposal_id. The user approves it (an approval form, their client's permission prompt for apply, or the caddy-ui Changes page); only an approved proposal is applied, and a failed reload or a site that starts answering differently rolls it back automatically. Never call apply before showing the diff.
+Proposal results include the diff and a review_url.
 For new sites, run check_domain afterwards: DNS should point at this box and a certificate should be issued within a minute.
 New apps deployed with Dokploy are reached through the dokploy template (import dokploy_proxy).`;
 
@@ -187,7 +188,20 @@ export function buildServer(authInfo: AuthInfo | undefined, requestInfo: Request
     if (!proposal) return text(`Not proposed:\n${errors.join("\n")}`, true);
     return {
       content: [{ type: "text" as const, text: `${describeProposal(proposal, baseUrl)}\n\nShow the user this summary, the risk flags and the diff. Then call apply with proposal_id ${proposal.id}.` }],
-      structuredContent: { proposal_id: proposal.id, status: proposal.status, risks: proposal.analysis.risks, added: proposal.analysis.added, removed: proposal.analysis.removed, changed: proposal.analysis.changed, expires_at: proposal.expiresAt },
+      structuredContent: {
+        proposal_id: proposal.id,
+        status: proposal.status,
+        summary: proposal.summary,
+        risks: proposal.analysis.risks,
+        added: proposal.analysis.added,
+        removed: proposal.analysis.removed,
+        changed: proposal.analysis.changed,
+        changed_lines: proposal.analysis.changedLines,
+        // Clients that only pass structured results on (e.g. Code Mode) still get the diff to show
+        diff: proposal.analysis.diff,
+        review_url: `${baseUrl}/changes?proposal=${proposal.id}`,
+        expires_at: proposal.expiresAt,
+      },
     };
   };
 
@@ -267,6 +281,11 @@ export function buildServer(authInfo: AuthInfo | undefined, requestInfo: Request
         let p = await getProposal(proposal_id);
         if (!p) return text(`no proposal ${proposal_id}`, true);
 
+        // This token's client asks the human before running apply (its permission prompt is the approval)
+        if (p.status === "pending" && APPROVAL_MODE === "chat" && authInfo?.extra?.approval === "client") {
+          p = await decide(p.id, "approved", "client");
+        }
+
         if (p.status === "pending" && APPROVAL_MODE === "chat") {
           const view = inputResponse(ctx.mcpReq.inputResponses, "approval");
           const answer = acceptedContent(ctx.mcpReq.inputResponses, "approval", approvalSchema);
@@ -301,7 +320,11 @@ export function buildServer(authInfo: AuthInfo | undefined, requestInfo: Request
         if (p.status !== "approved") return text(`Proposal ${p.id} is ${p.status}${p.result ? `: ${p.result}` : ""}.`, p.status !== "applied");
 
         const { result } = await applyProposal(p.id, actorFrom(authInfo, ctx));
-        return text(`${result.ok ? "✓" : "✗"} ${result.outcome}: ${result.message}${result.historyId ? `\nHistory: ${result.historyId}` : ""}`, !result.ok && result.outcome !== "noop");
+        return {
+          content: [{ type: "text", text: `${result.ok ? "✓" : "✗"} ${result.outcome}: ${result.message}${result.historyId ? `\nHistory: ${result.historyId}` : ""}` }],
+          structuredContent: { ok: result.ok, outcome: result.outcome, message: result.message, history_id: result.historyId ?? null },
+          ...(!result.ok && result.outcome !== "noop" ? { isError: true } : {}),
+        };
       } catch (err) {
         return err instanceof ProposalError ? text(err.message, true) : errorText(err);
       }

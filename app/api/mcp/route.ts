@@ -19,7 +19,7 @@ async function serve(req: Request): Promise<Response> {
   const record = await verifyToken(token);
   if (!record || !token) return unauthorized();
   return handler.fetch(req, {
-    authInfo: { token, clientId: record.name, scopes: [record.scope], extra: { tokenId: record.id } },
+    authInfo: { token, clientId: record.name, scopes: [record.scope], extra: { tokenId: record.id, approval: record.approval ?? "chat" } },
   });
 }
 

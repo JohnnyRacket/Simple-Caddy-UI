@@ -19,7 +19,7 @@ export interface Proposal {
   status: ProposalStatus;
   decidedAt?: string;
   /** Where the human decision came from */
-  decidedVia?: "ui" | "chat";
+  decidedVia?: "ui" | "chat" | "client";
   historyId?: string;
   result?: string;
 }
@@ -80,7 +80,7 @@ export async function listProposals(): Promise<Proposal[]> {
 }
 
 /** Record a human decision. Only pending proposals can be decided. */
-export async function decide(id: string, decision: "approved" | "rejected", via: "ui" | "chat"): Promise<Proposal> {
+export async function decide(id: string, decision: "approved" | "rejected", via: "ui" | "chat" | "client"): Promise<Proposal> {
   return withLock(`proposal:${id}`, async () => {
     const p = await getProposal(id);
     if (!p) throw new ProposalError(`no proposal ${id}`);

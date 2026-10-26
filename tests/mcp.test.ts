@@ -41,7 +41,7 @@ import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/cli
 import { GET, POST, DELETE } from "@/app/api/mcp/route";
 import { listEntries } from "@/lib/history";
 import { decide, getProposal } from "@/lib/proposals";
-import { createToken } from "@/lib/tokens";
+import { createToken, setApproval } from "@/lib/tokens";
 import { fakeState } from "./fake-caddy";
 
 const ORIGINAL = `{
@@ -97,6 +97,8 @@ const call = async (client: Client, name: string, args: Record<string, unknown> 
 
 let writeToken = "";
 let readToken = "";
+let clientToken = "";
+let clientTokenId = "";
 
 // Stand-in for Caddy's admin API: reports the running config as whatever the file adapts to
 let admin: http.Server;
@@ -108,6 +110,9 @@ beforeAll(async () => {
   await new Promise<void>((r) => admin.listen(23019, "127.0.0.1", r));
   writeToken = (await createToken("test-writer", "write")).token;
   readToken = (await createToken("test-reader", "read")).token;
+  const client = await createToken("test-client-approval", "write", "client");
+  clientToken = client.token;
+  clientTokenId = client.record.id;
 });
 afterAll(() => {
   admin.close();
@@ -197,6 +202,34 @@ for (const era of ["modern"] as const) {
     });
   });
 }
+
+describe("client approval (the client's permission prompt is the approval)", () => {
+  it("applies without asking again, and records how it was approved", async () => {
+    const { client, asked } = await connect(clientToken, { era: "modern" });
+    const p = await call(client, "propose_site", { host: "new.example.com", template: "dokploy" });
+    const sc = p.r.structuredContent as { proposal_id: string; diff: string; review_url: string };
+    // Code Mode only passes structured results on, so the diff must be there
+    expect(sc.diff).toContain("+new.example.com {");
+    expect(sc.review_url).toBe(`http://caddy.test:3000/changes?proposal=${sc.proposal_id}`);
+    const a = await call(client, "apply", { proposal_id: sc.proposal_id });
+    expect(a.r.structuredContent).toMatchObject({ ok: true, outcome: "applied" });
+    expect(asked).toHaveLength(0);
+    expect((await getProposal(sc.proposal_id))?.decidedVia).toBe("client");
+    expect(fs.readFileSync(env.caddyfile, "utf-8")).toContain("new.example.com");
+    await client.close();
+  });
+
+  it("goes back to the form when the token is switched to chat approval", async () => {
+    await setApproval(clientTokenId, "chat");
+    const { client, asked } = await connect(clientToken, { era: "modern", answer: () => ({ action: "accept", content: { approve: false } }) });
+    const p = await call(client, "propose_site", { host: "new.example.com", template: "dokploy" });
+    const a = await call(client, "apply", { proposal_id: (p.r.structuredContent as { proposal_id: string }).proposal_id });
+    expect(asked).toHaveLength(1);
+    expect(a.text).toMatch(/rejected/);
+    await setApproval(clientTokenId, "client");
+    await client.close();
+  });
+});
 
 describe("safety", () => {
   let session: Awaited<ReturnType<typeof connect>>;

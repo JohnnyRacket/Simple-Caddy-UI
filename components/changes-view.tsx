@@ -191,7 +191,7 @@ export function ChangesView() {
                 <div key={p.id} className="flex flex-wrap items-center gap-2 text-xs">
                   <Badge variant="outline" className={OUTCOME_STYLE[p.status]}>{p.status}</Badge>
                   <span>{p.summary}</span>
-                  <span className="text-muted-foreground">by {actorText(p.actor)} · {when(p.createdAt)}{p.decidedVia ? ` · decided in ${p.decidedVia === "ui" ? "the UI" : "chat"}` : ""}</span>
+                  <span className="text-muted-foreground">by {actorText(p.actor)} · {when(p.createdAt)}{p.decidedVia ? ` · decided ${p.decidedVia === "ui" ? "in the UI" : p.decidedVia === "client" ? "at the client's permission prompt" : "in chat"}` : ""}</span>
                 </div>
               ))}
             </section>

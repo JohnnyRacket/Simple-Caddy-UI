@@ -225,6 +225,15 @@ The **Changes** page shows the history with diffs, and can restore the version b
 
 ### Approval
 
+Each write token has an approval mode, set on the **MCP tokens** page:
+
+- **Approval form / Changes page** (default) — `apply` asks you through the client's MCP approval form, or you approve on the **Changes** page.
+- **Client's permission prompt** — for clients whose approval form doesn't work, such as OpenChamber running Claude Code (its answer can't be submitted there). Add an `ask` rule so the client prompts before every apply, and always choose **Allow once**; **Allow always** would switch approval off:
+
+```jsonc
+"permissions": [{ "action": "caddy_apply", "resource": "*", "effect": "ask" }]
+```
+
 A proposal is validated and stored with its diff and **risk flags**: removed sites, edits to the global options (including the auth portal config) or to shared snippets, sites behind auth or listed in `CADDY_SENSITIVE_HOSTS`, dropped rate limits, and large diffs. When the agent calls `apply`, the server asks you through an approval form in the chat client, or you approve on the **Changes** page. Only the exact proposed text is applied, through the safe-save path above.
 
 Agent-submitted text may only `import` snippets or files under the Caddyfile's directory, and may not bind Caddy's admin port or change the `admin` option.

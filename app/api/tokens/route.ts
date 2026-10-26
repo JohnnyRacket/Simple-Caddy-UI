@@ -10,11 +10,14 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { name, scope } = await req.json();
+    const { name, scope, approval } = await req.json();
     if (typeof name !== "string" || (scope !== "read" && scope !== "write")) {
       return NextResponse.json({ error: "name and scope (read or write) are required" }, { status: 400 });
     }
-    const { token, record } = await createToken(name, scope);
+    if (approval !== undefined && approval !== "chat" && approval !== "client") {
+      return NextResponse.json({ error: "approval must be chat or client" }, { status: 400 });
+    }
+    const { token, record } = await createToken(name, scope, approval);
     // The only time the token itself is returned
     return NextResponse.json({ token, record: { ...record, hash: undefined } }, { status: 201 });
   } catch (err: unknown) {

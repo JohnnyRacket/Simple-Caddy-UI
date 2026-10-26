@@ -34,6 +34,7 @@ export function TokensView() {
   const [tokens, setTokens] = useState<TokenView[]>([]);
   const [name, setName] = useState("openchamber");
   const [scope, setScope] = useState<"read" | "write">("write");
+  const [approval, setApprovalMode] = useState<"chat" | "client">("chat");
   const [created, setCreated] = useState<{ token: string; name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -49,7 +50,7 @@ export function TokensView() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/tokens", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, scope }) });
+      const res = await fetch("/api/tokens", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, scope, approval }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setCreated({ token: data.token, name: data.record.name });
@@ -60,6 +61,11 @@ export function TokensView() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const changeApproval = async (id: string, value: "chat" | "client") => {
+    await fetch(`/api/tokens/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approval: value }) });
+    refresh();
   };
 
   const revoke = async (id: string) => {
@@ -107,10 +113,21 @@ export function TokensView() {
                   <option value="read">read</option>
                 </select>
               </div>
+              <div className="space-y-1">
+                <Label htmlFor="token-approval">Approval</Label>
+                <select id="token-approval" value={approval} onChange={(e) => setApprovalMode(e.target.value as "chat" | "client")} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="chat">approval form / Changes page</option>
+                  <option value="client">client&apos;s permission prompt</option>
+                </select>
+              </div>
               <Button onClick={create} disabled={busy || !name.trim()} className="gap-1.5">
                 {busy ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />} Create
               </Button>
             </div>
+            <p className="text-xs text-muted-foreground">
+              <b>client&apos;s permission prompt</b>: for clients whose approval form doesn&apos;t work (OpenChamber with Claude Code). Add an
+              {" "}<code>ask</code> permission rule for <code>caddy_apply</code> in the client and always choose <b>Allow once</b>; <b>Allow always</b> would switch approval off.
+            </p>
             {error && <p className="text-sm text-destructive">{error}</p>}
             {created && (
               <div className="space-y-3 rounded-md bg-zinc-950 p-3">
@@ -138,6 +155,17 @@ export function TokensView() {
                 <KeyRound className="size-4 text-muted-foreground" />
                 <span className="text-sm">{t.name}</span>
                 <Badge variant="outline" className={t.scope === "write" ? "text-yellow-400 border-yellow-400/40" : ""}>{t.scope}</Badge>
+                {t.scope === "write" && (
+                  <select
+                    aria-label={`Approval for ${t.name}`}
+                    value={t.approval ?? "chat"}
+                    onChange={(e) => changeApproval(t.id, e.target.value as "chat" | "client")}
+                    className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                  >
+                    <option value="chat">approval: form / Changes page</option>
+                    <option value="client">approval: client permission prompt</option>
+                  </select>
+                )}
                 <span className="text-xs text-muted-foreground ml-auto">
                   created {new Date(t.createdAt).toLocaleDateString()} · {t.lastUsedAt ? `last used ${new Date(t.lastUsedAt).toLocaleString()}` : "never used"}
                 </span>

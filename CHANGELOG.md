@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.2.1] — 2026-10-26
+
+### Added
+
+- Per-token approval mode: **client's permission prompt**, for clients whose MCP approval form can't be answered (OpenChamber running Claude Code files it under a `global` session and fails to submit). The client's `ask` rule on `caddy_apply` is the approval; switch modes on the MCP tokens page.
+
+### Fixed
+
+- Proposal and apply results carry the diff, review link and outcome as structured content, so clients that only pass structured results on (OpenCode Code Mode) can show the diff.
+
 ## [1.2.0] — 2026-10-26
 
 ### Added

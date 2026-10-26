@@ -193,6 +193,20 @@ describe("real Caddy", () => {
     expect((await call(client, "apply", { proposal_id: proposalId(p) })).text).toMatch(/is applied/);
   }, 60_000);
 
+  it("applies straight away for a client-approval token", async () => {
+    const res = await ui("/api/tokens", { method: "POST", body: JSON.stringify({ name: `int-client-${Date.now()}`, scope: "write", approval: "client" }) });
+    const client = new Client({ name: "integration-client", version: "1.0.0" }, { capabilities: {}, versionNegotiation: { mode: "auto" } });
+    await client.connect(new StreamableHTTPClientTransport(new URL(URL_ + "/api/mcp"), { requestInit: { headers: { Authorization: `Bearer ${res.body.token}` } } }));
+    clients.push(client);
+    const p = await call(client, "propose_site", { host: "client.test", template: "reverse_proxy", upstream: "127.0.0.1:9" });
+    expect(p.data.diff).toContain("+client.test {");
+    const a = await call(client, "apply", { proposal_id: proposalId(p) });
+    expect(a.data).toMatchObject({ ok: true, outcome: "applied" });
+    expect(await servedEventually("client.test", "502")).toBe("502");
+    const patched = await ui(`/api/tokens/${res.body.record.id}`, { method: "PATCH", body: JSON.stringify({ approval: "chat" }) });
+    expect(patched.body.token.approval).toBe("chat");
+  }, 60_000);
+
   it("rolls back a change through history", async () => {
     const { client } = await connect();
     const p = await call(client, "propose_site", { host: "undo.test", template: "reverse_proxy", upstream: "127.0.0.1:9" });
