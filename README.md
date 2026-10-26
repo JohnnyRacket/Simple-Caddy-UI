@@ -63,14 +63,19 @@ EOF
 sudo -u caddy-ui npm run build
 ```
 
-> **`LOCAL_ONLY`** — by default the app rejects requests from non-LAN IPs. If you're running behind a reverse proxy or need to adjust this, add `LOCAL_ONLY=false` to your `.env.local`.
+> **`SECRET_TOKEN` is required.** Without it the app answers every request with `503`. (Set `DISABLE_AUTH=true` only if you really want an unauthenticated UI.)
+
+> **`LOCAL_ONLY`** — by default the app rejects requests from non-LAN IPs, judged by the real TCP peer address (a client-sent `X-Forwarded-For` is ignored). If you put the UI behind a reverse proxy such as Caddy, list the proxy's address in `TRUSTED_PROXIES` (e.g. `TRUSTED_PROXIES=127.0.0.1,::1`) so the client IP it forwards is used instead. `LOCAL_ONLY=false` turns the check off.
+
+> **`HOST`** — the server listens on all interfaces (IPv4 and IPv6) by default. Set `HOST=192.168.1.10` (or `::`, `127.0.0.1`, …) to bind to one address.
 
 > **Binary path overrides** — the app defaults to standard Debian/Ubuntu paths (`/bin/cp`, `/usr/bin/caddy`, `/bin/systemctl`, `/usr/bin/journalctl`). On other distros, override them in `.env.local`:
 > ```
-> CP_BIN=/usr/bin/cp
+> TEE_BIN=/usr/bin/tee
 > CADDY_BIN=/usr/local/bin/caddy
 > SYSTEMCTL_BIN=/usr/bin/systemctl
 > JOURNALCTL_BIN=/usr/bin/journalctl
+> CADDY_USER=caddy   # user that runs Caddy; validation runs as this user
 > ```
 
 ### 4. Configure Sudoers
@@ -84,11 +89,13 @@ sudo visudo -f /etc/sudoers.d/caddy-ui
 Paste the following, then save and exit:
 
 ```
-caddy-ui ALL=(ALL) NOPASSWD: /bin/cp /tmp/caddyfile-*/Caddyfile /etc/caddy/Caddyfile
-caddy-ui ALL=(ALL) NOPASSWD: /bin/systemctl reload caddy
-caddy-ui ALL=(ALL) NOPASSWD: /usr/bin/caddy validate --config /etc/caddy/Caddyfile
-caddy-ui ALL=(ALL) NOPASSWD: /usr/bin/journalctl -u caddy -f --no-pager -o short-iso
+caddy-ui ALL=(root) NOPASSWD: /usr/bin/tee /etc/caddy/Caddyfile
+caddy-ui ALL=(root) NOPASSWD: /bin/systemctl reload caddy
+caddy-ui ALL=(caddy) NOPASSWD: /usr/bin/caddy validate --config /etc/caddy/Caddyfile
+caddy-ui ALL=(root) NOPASSWD: /usr/bin/journalctl -u caddy -f --no-pager -o short-iso
 ```
+
+Every rule names its exact arguments — no wildcards. (A `*` in a sudoers rule matches spaces too, so a rule like `/bin/cp /tmp/caddyfile-*/Caddyfile …` lets the app user smuggle in extra arguments and copy files anywhere as root.) Validation runs as the `caddy` user rather than root, since a Caddyfile can `import` any path and parse errors echo its contents.
 
 Verify it works:
 

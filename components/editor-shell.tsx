@@ -27,6 +27,13 @@ function useActionStatus() {
   return { status, run };
 }
 
+async function fetchCaddyfile(): Promise<string> {
+  const res = await fetch("/api/caddyfile");
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Failed to load Caddyfile");
+  return data.content;
+}
+
 export function EditorShell() {
   const [content, setContent] = useState("");
   const [savedContent, setSavedContent] = useState("");
@@ -39,23 +46,27 @@ export function EditorShell() {
   const validate = useActionStatus();
   const format = useActionStatus();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const res = await fetch("/api/caddyfile");
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to load Caddyfile");
-      setContent(data.content);
-      setSavedContent(data.content);
-    } catch (err: unknown) {
-      setLoadError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
+  // Only sets state from promise callbacks, so it's safe to call from an effect
+  const applyLoad = useCallback((result: Promise<string>) => {
+    result
+      .then(
+        (text) => {
+          setContent(text);
+          setSavedContent(text);
+          setLoadError(null);
+        },
+        (err: unknown) => setLoadError((err as Error).message),
+      )
+      .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const load = useCallback(() => {
+    setLoading(true);
+    setLoadError(null);
+    applyLoad(fetchCaddyfile());
+  }, [applyLoad]);
+
+  useEffect(() => { applyLoad(fetchCaddyfile()); }, [applyLoad]);
 
   const handleSave = useCallback(() => {
     save.run(async () => {

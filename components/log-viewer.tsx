@@ -17,11 +17,9 @@ export function LogViewer() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
 
-  const connect = useCallback(() => {
+  // Only sets state from EventSource callbacks, so it's safe to call from an effect
+  const open = useCallback(() => {
     esRef.current?.close();
-    setStatus("connecting");
-    setErrorMsg(null);
-
     const es = new EventSource("/api/logs");
     esRef.current = es;
 
@@ -48,10 +46,16 @@ export function LogViewer() {
     };
   }, []);
 
+  const connect = useCallback(() => {
+    setStatus("connecting");
+    setErrorMsg(null);
+    open();
+  }, [open]);
+
   useEffect(() => {
-    connect();
+    open();
     return () => { esRef.current?.close(); };
-  }, [connect]);
+  }, [open]);
 
   // Auto-scroll to bottom when new lines arrive
   useEffect(() => {

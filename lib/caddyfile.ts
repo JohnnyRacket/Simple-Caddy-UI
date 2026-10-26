@@ -1,5 +1,4 @@
 import fs from "fs/promises";
-import os from "os";
 import path from "path";
 import { runCommand } from "./exec";
 
@@ -17,7 +16,7 @@ const CADDYFILE = rawPath;
 
 export async function readCaddyfile(): Promise<string> {
   try {
-    return await fs.readFile(CADDYFILE, "utf-8");
+    return await fs.readFile(/*turbopackIgnore: true*/ CADDYFILE, "utf-8");
   } catch (err: unknown) {
     const e = err as NodeJS.ErrnoException;
     const detail =
@@ -32,24 +31,19 @@ export async function readCaddyfile(): Promise<string> {
   }
 }
 
-const CP_BIN = process.env.CP_BIN ?? "/bin/cp";
+const TEE_BIN = process.env.TEE_BIN ?? "/usr/bin/tee";
 const CADDY_BIN = process.env.CADDY_BIN ?? "/usr/bin/caddy";
+const CADDY_USER = process.env.CADDY_USER ?? "caddy";
 const SYSTEMCTL_BIN = process.env.SYSTEMCTL_BIN ?? "/bin/systemctl";
 
 export async function saveCaddyfile(content: string): Promise<void> {
-  // Use a private temp directory to prevent symlink/TOCTOU attacks
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "caddyfile-"));
-  const tmpPath = path.join(tmpDir, "Caddyfile");
-  await fs.writeFile(tmpPath, content, { encoding: "utf-8", mode: 0o600 });
-  try {
-    await runCommand("sudo", [CP_BIN, tmpPath, CADDYFILE]);
-  } finally {
-    await fs.rm(tmpDir, { recursive: true }).catch((e) => console.warn("[caddyfile] tmp cleanup failed:", e));
-  }
+  // Content goes over stdin so the sudoers rule can name exact arguments —
+  // no source path, no wildcard, nothing for a symlink to redirect.
+  await runCommand("sudo", ["-n", TEE_BIN, CADDYFILE], { input: content });
 }
 
 export async function reloadCaddy(): Promise<void> {
-  await runCommand("sudo", [SYSTEMCTL_BIN, "reload", "caddy"]);
+  await runCommand("sudo", ["-n", SYSTEMCTL_BIN, "reload", "caddy"]);
 }
 
 export async function validateCaddyfile(): Promise<{
@@ -57,7 +51,12 @@ export async function validateCaddyfile(): Promise<{
   output: string;
 }> {
   try {
+    // Run as the caddy user, not root: a Caddyfile can `import` arbitrary
+    // paths, and parse errors echo their contents back to the caller.
     const { stdout, stderr } = await runCommand("sudo", [
+      "-n",
+      "-u",
+      CADDY_USER,
       CADDY_BIN,
       "validate",
       "--config",

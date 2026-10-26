@@ -11,13 +11,13 @@ export async function GET() {
   }
 
   activeConnections++;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let proc: ReturnType<typeof spawnStream> | null = null;
 
   const stream = new ReadableStream({
     start(controller) {
       const JOURNALCTL_BIN = process.env.JOURNALCTL_BIN ?? "/usr/bin/journalctl";
       proc = spawnStream("sudo", [
+        "-n",
         JOURNALCTL_BIN,
         "-u", "caddy",
         "-f",

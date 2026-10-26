@@ -1,7 +1,7 @@
 FROM ubuntu:22.04@sha256:3ba65aa20f86a0fad9df2b2c259c613df006b2e6d0bfcc8a146afb8c525a9751
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install Caddy (official apt repo), Node.js 20, sudo, supervisor
+# Install Caddy (official apt repo), Node.js 24, sudo, supervisor
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl gnupg ca-certificates debian-keyring \
         debian-archive-keyring apt-transport-https \
@@ -19,10 +19,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Create caddy-ui service user + sudoers matching the Pi rules
 RUN useradd --system --no-create-home --shell /usr/sbin/nologin caddy-ui \
-    && echo 'caddy-ui ALL=(ALL) NOPASSWD: /bin/cp /tmp/caddyfile-*/Caddyfile /etc/caddy/Caddyfile' > /etc/sudoers.d/caddy-ui \
-    && echo 'caddy-ui ALL=(ALL) NOPASSWD: /usr/bin/caddy validate --config /etc/caddy/Caddyfile' >> /etc/sudoers.d/caddy-ui \
-    && echo 'caddy-ui ALL=(ALL) NOPASSWD: /usr/bin/systemctl reload caddy' >> /etc/sudoers.d/caddy-ui \
-    && echo 'caddy-ui ALL=(ALL) NOPASSWD: /usr/bin/journalctl -u caddy -f --no-pager -o short-iso' >> /etc/sudoers.d/caddy-ui \
+    && echo 'caddy-ui ALL=(root) NOPASSWD: /usr/bin/tee /etc/caddy/Caddyfile' > /etc/sudoers.d/caddy-ui \
+    && echo 'caddy-ui ALL=(caddy) NOPASSWD: /usr/bin/caddy validate --config /etc/caddy/Caddyfile' >> /etc/sudoers.d/caddy-ui \
+    && echo 'caddy-ui ALL=(root) NOPASSWD: /usr/bin/systemctl reload caddy' >> /etc/sudoers.d/caddy-ui \
+    && echo 'caddy-ui ALL=(root) NOPASSWD: /usr/bin/journalctl -u caddy -f --no-pager -o short-iso' >> /etc/sudoers.d/caddy-ui \
     && chmod 0440 /etc/sudoers.d/caddy-ui
 
 # Caddy log directory

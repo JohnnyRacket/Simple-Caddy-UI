@@ -1,10 +1,7 @@
-import { NextRequest, NextResponse } from "next/server"
+import { AUTH_COOKIE, seeOther } from "@/lib/auth"
 
-export async function POST(req: NextRequest) {
-  const host = req.headers.get("host") ?? "localhost:3000"
-  const proto = req.headers.get("x-forwarded-proto") ?? "http"
-  const url = new URL(`${proto}://${host}/login`)
-  const res = NextResponse.redirect(url)
-  res.cookies.delete("__auth")
+export async function POST() {
+  const res = seeOther("/login")
+  res.headers.append("Set-Cookie", `${AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`)
   return res
 }
